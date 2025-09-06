@@ -1,0 +1,509 @@
+<link rel="icon" type="image/png" href="./robo-Photoroom.png?v=3">
+<link rel="apple-touch-icon" href="./robo-Photoroom.png?v=3">
+
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Procesare scan</title>
+  <style>
+    :root{
+      color-scheme: dark;
+      --bg:#0b1220; --bg2:#0f172a;
+      --card:#121a2b; --muted:#9fb2d0; --txt:#e8eefc;
+      --line:#243049; --ring:#3b82f6;
+      --ok:#10b981; --ok-dark:#0f5132; --warn:#f59e0b; --bad:#ef4444;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; color:var(--txt); background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(59,130,246,.12), transparent 60%),
+        radial-gradient(1000px 500px at 110% 10%, rgba(16,185,129,.10), transparent 60%),
+        var(--bg);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    }
+    .wrap{max-width:900px;margin:28px auto;padding:20px}
+    .card{
+      background:linear-gradient(180deg, rgba(18,26,43,.9), rgba(18,26,43,.9));
+      border:1px solid rgba(63,78,120,.45);
+      border-radius:16px; padding:18px 18px 16px;
+      box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.02);
+      backdrop-filter: blur(6px);
+    }
+    h2{margin:0 0 10px; font-size:20px; letter-spacing:.2px}
+    .sub{font-size:12px;color:var(--muted);margin-bottom:12px}
+
+    /* Status banner */
+    #status{
+      border:1px solid var(--line);
+      background:linear-gradient(180deg,#0e1527,#0a1324);
+      border-left:4px solid #3b82f6;
+      padding:10px 12px; border-radius:10px; margin-bottom:12px;
+    }
+    #status.ok{ border-left-color:var(--ok); background:linear-gradient(180deg,#0f241a,#0b1c15); }
+    #status.bad{ border-left-color:var(--bad); background:linear-gradient(180deg,#2a1414,#1a0f10); }
+    #status.muted{ border-left-color:#64748b; }
+
+    .grid{
+      display:grid; gap:12px;
+      grid-template-columns: 1.3fr 1fr 1fr auto;
+      align-items:end;
+    }
+    .field{display:flex;flex-direction:column;gap:6px;min-width:0}
+    .label{font-size:12px;color:var(--muted)}
+    input,button,select{
+      background:#111827;
+      border:1px solid #2a3a60;
+      color:#fff; border-radius:10px;
+      padding:10px 12px; outline:none;
+      transition:border-color .15s, box-shadow .15s, background .15s;
+    }
+    input:focus,select:focus{
+      border-color:var(--ring);
+      box-shadow:0 0 0 3px rgba(59,130,246,.25);
+      background:#0f1629;
+    }
+    input::placeholder{color:#7c8aa8}
+    input[type=text]{width:100%}
+    button{
+      cursor:pointer; font-weight:700; white-space:nowrap;
+      background:#1d2a44; border-color:#2a3a60;
+    }
+    button:hover{background:#223154}
+    button:disabled{opacity:.55;cursor:not-allowed}
+
+    /* Buton Salvează – feedback */
+    #saveBtn{ position:relative; transition:background .2s,border-color .2s,color .2s,transform .05s }
+    #saveBtn:active{ transform:translateY(1px) }
+    #saveBtn.is-loading{ pointer-events:none; opacity:.98; }
+    #saveBtn.is-loading::after{
+      content:""; display:inline-block; width:14px; height:14px; margin-left:8px; vertical-align:-2px;
+      border-radius:50%; border:2px solid rgba(255,255,255,.9); border-top-color:transparent;
+      animation:sbspin .8s linear infinite;
+    }
+    @keyframes sbspin{ to{ transform: rotate(360deg); } }
+    #saveBtn.is-ok{
+      background:var(--ok-dark);
+      border-color:#198754;
+      box-shadow:0 0 0 2px rgba(16,185,129,.18) inset;
+    }
+
+    /* Countdown pill + bar */
+    .cd-wrap{display:flex; align-items:center; gap:10px}
+    .pill{
+      font-size:12px; padding:6px 12px; border-radius:999px;
+      background:#0e1527;border:1px solid #2a3a60; color:#cfe0ff
+    }
+    .pill.warn{border-color:var(--warn);color:#fbbf24}
+    .pill.ok{border-color:var(--ok);color:#6ee7a8}
+    .pill.bad{border-color:var(--bad);color:#fca5a5}
+
+    .cdbar{
+      flex:1; height:10px; border-radius:999px; overflow:hidden;
+      background:#0f1a30; border:1px solid #26304a; min-width:160px;
+    }
+    .cdbar > .prog{
+      height:100%; width:0%;
+      background:linear-gradient(90deg, #34d399, #10b981);
+      transition:width .25s ease;
+    }
+
+    /* Debug */
+    pre{background:#0e1527;border:1px solid #1f2b46;border-radius:12px;padding:12px;overflow:auto;white-space:pre-wrap}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h2>Procesare scan</h2>
+        <div class="sub">Completează datele și salvează în fereastra permisă.</div>
+
+      <div id="status" class="muted" aria-live="polite">Se verifică semnătura…</div>
+
+      <!-- Formular compact, aerisit -->
+      <div class="grid">
+        <div class="field">
+          <label class="label" for="teamInp">Echipă (scrie)</label>
+          <input id="teamInp" type="text" placeholder="ex: Team Alpha" list="teamsList" />
+          <datalist id="teamsList"></datalist>
+        </div>
+
+        <div class="field">
+          <label class="label" for="tempInp">Temperatură (°C)</label>
+          <input id="tempInp" type="text" inputmode="decimal" placeholder="ex: 22,40 / 22.40" />
+        </div>
+
+        <div class="field">
+          <label class="label" for="humInp">Umiditate (%)</label>
+          <input id="humInp" type="text" inputmode="decimal" placeholder="ex: 48" />
+        </div>
+
+        <div class="field" style="align-items:flex-end">
+          <button id="saveBtn" disabled>Salvează</button>
+        </div>
+      </div>
+
+      <!-- Hint dinamic pentru echipă -->
+      <div class="cd-wrap" style="margin-top:10px">
+        <span id="teamHint" class="pill" style="display:none"></span>
+      </div>
+
+      <!-- Countdown + bar progres -->
+      <div class="cd-wrap" style="margin-top:8px">
+        <span id="countdown" class="pill warn" style="display:none"></span>
+        <div id="cdbar" class="cdbar" style="display:none">
+          <div id="cdprog" class="prog"></div>
+        </div>
+      </div>
+
+      <pre id="dbg" style="margin-top:14px"></pre>
+    </div>
+  </div>
+
+  <!-- Firebase (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-database-compat.js"></script>
+  <!-- Config din Hosting -->
+  <script src="/__/firebase/init.js?useEmulator=false"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.min.js"></script>
+  <script>
+    const setStatus = (txt, cls='') => { const el=document.getElementById('status'); el.textContent=txt; el.className=cls; };
+    const show = (o) => document.getElementById('dbg').textContent = typeof o==='string'?o:JSON.stringify(o,null,2);
+
+    if (!firebase.apps.length) { setStatus('Firebase nu s-a inițializat (init.js).', 'bad'); }
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+    const rtdb = firebase.database();
+    auth.signInAnonymously().catch(()=>{});
+
+    // helpers
+    const toNumberRelaxed = (v) => { if (v==null) return null; const s=String(v).trim().replace(',', '.'); if (s==='') return null; const n=Number(s); return Number.isFinite(n)? n:null; };
+    const round2 = (n) => Math.round(n*100)/100;
+    const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+    const formatFixed2ForInput = (raw) => {
+      if (raw == null || String(raw).trim() === '') return '';
+      const usedComma = String(raw).includes(',');
+      const n = toNumberRelaxed(raw);
+      if (n == null) return '';
+      const fixed = round2(n).toFixed(2);
+      return usedComma ? fixed.replace('.', ',') : fixed;
+    };
+
+    // params
+    const u = new URL(location.href);
+    const roundId = u.searchParams.get('roundId') || '';
+    const cpId    = u.searchParams.get('cpId')    || '';
+    const m       = Number(u.searchParams.get('m')||'0');
+    const sig     = (u.searchParams.get('sig')||'').trim();
+    const tempQ   = u.searchParams.get('temp');
+    const humQ    = u.searchParams.get('humidity');
+    const teamQ   = (u.searchParams.get('teamId')||'').trim();
+
+    // refs
+    const teamInp  = document.getElementById('teamInp');
+    const teamHint = document.getElementById('teamHint');
+    const saveBtn  = document.getElementById('saveBtn');
+    const tempInp  = document.getElementById('tempInp');
+    const humInp   = document.getElementById('humInp');
+    const cdEl     = document.getElementById('countdown');
+    const cdBar    = document.getElementById('cdbar');
+    const cdProg   = document.getElementById('cdprog');
+    const datalist = document.getElementById('teamsList');
+
+    tempInp.value = formatFixed2ForInput(tempQ);
+    humInp.value  = (humQ ?? '');
+    tempInp.addEventListener('blur', () => { tempInp.value = formatFixed2ForInput(tempInp.value); });
+
+    const hmac = (cpId, roundId, minute, secret) =>
+      CryptoJS.HmacSHA256(`${cpId}.${roundId}.${minute}`, secret).toString(CryptoJS.enc.Hex).slice(0,32);
+
+    const GRACE_MS = 60 * 1000;
+    let countdownTimer = null;
+    let windowEndMs = null;
+    let docUnsub = null;
+
+    // RTDB live
+    let liveRef = null; let liveDebounce = null; let cpOrder = null;
+
+    // Team resolver
+    const teamsIndex = { byId:new Map(), byName:new Map() };
+    const norm = (s) => String(s||'').toLowerCase().trim();
+
+    function updateTeamHint(team) {
+      if (!team) {
+        teamHint.textContent = 'Echipa inexistentă';
+        teamHint.className = 'pill bad';
+        teamHint.style.display = 'inline-block';
+      } else {
+        teamHint.textContent = `Echipă: ${team.name} (${team.id})`;
+        teamHint.className = 'pill ok';
+        teamHint.style.display = 'inline-block';
+      }
+    }
+    function resolveTeam() {
+      const raw = teamInp.value; if (!raw) return null;
+      const idKey=norm(raw); if (teamsIndex.byId.has(idKey)) return teamsIndex.byId.get(idKey);
+      const nameKey=norm(raw); if (teamsIndex.byName.has(nameKey)) return teamsIndex.byName.get(nameKey);
+      const m=raw.match(/\(([^)]+)\)\s*$/); if (m && teamsIndex.byId.has(norm(m[1]))) return teamsIndex.byId.get(norm(m[1]));
+      return null;
+    }
+
+    function showCdUI(show){
+      cdEl.style.display = show ? 'inline-block' : 'none';
+      cdBar.style.display = show ? 'block' : 'none';
+    }
+
+    function hideCountdown(msgIfAny) {
+      showCdUI(false);
+      if (msgIfAny) setStatus(msgIfAny, 'muted');
+      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+      windowEndMs = null; cdProg.style.width = '0%';
+      const t = resolveTeam();
+      saveBtn.disabled = !validPayload || !t;
+    }
+    function setCdText(text, cls='pill warn') {
+      cdEl.className = cls;
+      cdEl.textContent = text;
+      cdEl.style.display = 'inline-block';
+    }
+    function startCountdown(createdAtMs) {
+      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+      windowEndMs = createdAtMs + GRACE_MS;
+      showCdUI(true);
+
+      const tick = () => {
+        const now = Date.now();
+        const left = Math.max(0, windowEndMs - now);
+        const leftSec = Math.ceil(left / 1000);
+        const frac = Math.max(0, Math.min(1, left / GRACE_MS));
+        cdProg.style.width = (frac * 100).toFixed(1) + '%';
+
+        if (left > 0) {
+          setCdText(`⏳ Modificări permise încă ${leftSec}s`);
+          saveBtn.disabled = !resolveTeam();
+        } else {
+          setCdText('⏱️ Fereastra de modificare a expirat', 'pill bad');
+          saveBtn.disabled = true;
+          clearInterval(countdownTimer); countdownTimer = null;
+        }
+      };
+      tick();
+      countdownTimer = setInterval(tick, 250);
+    }
+
+    // ====== LIVE (RTDB) ======
+    function pushLive(immediate=false){
+      if (!liveRef) return;
+      const tParsed = toNumberRelaxed(tempInp.value);
+      const hParsed = toNumberRelaxed(humInp.value);
+      const payload = {
+        temp: (tParsed == null ? null : round2(tParsed)),
+        humidity: (hParsed == null ? null : round2(hParsed)),
+        updatedAtMs: Date.now(),
+      };
+      const write = () => liveRef.set(payload).catch(()=>{});
+      if (immediate) write(); else { clearTimeout(liveDebounce); liveDebounce = setTimeout(write, 150); }
+    }
+    function bindLiveRef(){
+      if (!cpOrder) return;
+      const team = resolveTeam(); if (!team) return;
+      if (liveRef) { try{ liveRef.off(); }catch(e){} liveRef=null; }
+      liveRef = rtdb.ref(`readings/${team.id}/${roundId}/${cpOrder}`);
+      try { liveRef.onDisconnect().remove(); } catch(e){}
+      pushLive(true);
+    }
+
+    async function loadTeams(){
+      datalist.innerHTML = '';
+      teamsIndex.byId.clear(); teamsIndex.byName.clear();
+
+      const snap = await db.collection('teams').get();
+      const teams = snap.docs.map(d => ({ id:d.id, name:(d.data().name || d.id) }))
+        .sort((a,b) => a.name.localeCompare(b.name));
+
+      for (const t of teams){
+        teamsIndex.byId.set(norm(t.id), t);
+        teamsIndex.byName.set(norm(t.name), t);
+        const opt = document.createElement('option'); opt.value = `${t.name} (${t.id})`; datalist.appendChild(opt);
+      }
+
+      const remembered = localStorage.getItem('teamInput') || '';
+      if (teamQ) {
+        const byId = teamsIndex.byId.get(norm(teamQ));
+        teamInp.value = byId ? `${byId.name}` : teamQ;
+      } else if (remembered) teamInp.value = remembered;
+
+      const team = resolveTeam(); updateTeamHint(team);
+      bindDocWatcher();
+
+      const onInputChange = () => {
+        localStorage.setItem('teamInput', teamInp.value);
+        const t = resolveTeam(); updateTeamHint(t);
+        bindDocWatcher(); bindLiveRef();
+        saveBtn.disabled = !validPayload || !t;
+      };
+      teamInp.addEventListener('input', onInputChange);
+      teamInp.addEventListener('blur', onInputChange);
+
+      tempInp.addEventListener('input', () => pushLive(false));
+      humInp .addEventListener('input', () => pushLive(false));
+
+      window.addEventListener('beforeunload', () => { try{ if (liveRef) liveRef.remove(); }catch(e){} });
+    }
+
+    function bindDocWatcher(){
+      if (!roundId || !cpId) return;
+      if (docUnsub) { docUnsub(); docUnsub=null; }
+
+      const team = resolveTeam();
+      if (!team) { hideCountdown('Scrie numele/ID-ul exact al echipei.'); return; }
+
+      const id = `${team.id}_${roundId}_${cpId}`;
+      const ref = db.doc(`scans/${id}`);
+      docUnsub = ref.onSnapshot((snap) => {
+        if (!snap.exists) {
+          setCdText('După prima salvare ai 60s pentru modificări.', 'pill');
+          showCdUI(false);
+          const t = resolveTeam();
+          saveBtn.disabled = !validPayload || !t;
+          return;
+        }
+        const v = snap.data() || {};
+        if (v.locked) {
+          setCdText('🔒 LOCKED de profesor – modificările sunt blocate', 'pill bad');
+          showCdUI(true); cdProg.style.width='0%';
+          saveBtn.disabled = true;
+          if (countdownTimer) { clearInterval(countdownTimer); countdownTimer=null; }
+          return;
+        }
+        const created = Number(v.createdAtMs || Date.now());
+        startCountdown(created);
+      });
+    }
+
+    let validPayload = false;
+    async function validatePayload(){
+      if (!roundId || !cpId || !Number.isFinite(m) || !sig) {
+        setStatus('URL incomplet (roundId, cpId, m, sig).', 'bad'); show({ roundId, cpId, m, sig }); return null;
+      }
+      const cpDoc = await db.collection('checkpoints').doc(cpId).get();
+      if (!cpDoc.exists) { setStatus('Checkpoint inexistent.', 'bad'); return null; }
+      const cp = cpDoc.data();
+
+      if (cp.roundId !== roundId) { setStatus(`Checkpoint-ul nu aparține rundei "${roundId}".`, 'bad'); return null; }
+      if (cp.isActive !== true)   { setStatus('Checkpoint inactiv pentru această rundă.', 'bad'); return null; }
+
+      const nowMin = Math.floor(Date.now()/60000);
+      const expected = hmac(cpId, roundId, m, cp.secret);
+      if (expected !== sig)        { setStatus('Semnătură invalidă.', 'bad'); show({ expected, got:sig }); return null; }
+      if (Math.abs(nowMin - m) > 2){ setStatus('QR expirat (minut nepotrivit).', 'bad'); show({ nowMin, m }); return null; }
+
+      cpOrder = Number(cp.order || 0);
+
+      setStatus('✔ Semnătură validă. Scrie echipa și salvează.', 'ok');
+      show({ roundId, cpId, m, sig, tempQ, humQ, teamQ, order: cpOrder });
+      return { roundId, cpId, m };
+    }
+
+    let saving = false;
+
+    async function saveScan(payload){
+      if (saving) return;
+      const team = resolveTeam();
+      if (!team) { alert('Scrie un nume/ID de echipă valid.'); teamInp.focus(); return; }
+      localStorage.setItem('teamInput', teamInp.value);
+
+      const tParsed = toNumberRelaxed(tempInp.value);
+      const tempNum = (tParsed == null ? null : round2(clamp(tParsed, -50, 100)));
+      const hParsed = toNumberRelaxed(humInp.value);
+      const humNum  = (hParsed == null ? null : clamp(hParsed, 0, 100));
+
+      const id = `${team.id}_${payload.roundId}_${payload.cpId}`;
+      const ref = db.doc(`scans/${id}`);
+      const nowMs = Date.now();
+
+      try {
+        saving = true;
+
+        // vizual
+        saveBtn.classList.remove('is-ok');
+        saveBtn.classList.add('is-loading');
+        saveBtn.textContent = 'Se salvează…';
+        saveBtn.disabled = true;
+
+        const exist = await ref.get();
+        if (exist.exists) {
+          const v = exist.data() || {};
+          if (v.locked) throw new Error('Scan LOCKED – cere profesorului deblocarea.');
+          const left = Math.max(0, Math.ceil((Number(v.createdAtMs || nowMs) + GRACE_MS - nowMs) / 1000));
+          if (left === 0) throw new Error('Fereastra de modificare a expirat (60s). Cere profesorului ajustarea.');
+        }
+
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(ref);
+          if (!snap.exists) {
+            tx.set(ref, {
+              teamId: team.id, roundId: payload.roundId, cpId: payload.cpId, qrMinute: payload.m,
+              temp: tempNum, humidity: humNum,
+              createdAtMs: nowMs, updatedAtMs: nowMs,
+              version: 1, locked: false,
+              timestamp: firebase.firestore.Timestamp.now(),
+              payload: payload
+            });
+          } else {
+            const v = snap.data();
+            if (v.locked === true) throw new Error('Înregistrarea este blocată (locked).');
+            const created = Number(v.createdAtMs || nowMs);
+            if (nowMs - created > GRACE_MS) throw new Error('Fereastra de modificare a expirat (60s).');
+            tx.update(ref, {
+              temp: tempNum, humidity: humNum,
+              updatedAtMs: nowMs, version: (v.version || 1) + 1,
+              timestamp: firebase.firestore.Timestamp.now(),
+            });
+          }
+        });
+
+        setStatus('✅ Salvat.', 'ok');
+
+        // succes UI
+        saveBtn.classList.remove('is-loading');
+        saveBtn.classList.add('is-ok');
+        saveBtn.textContent = 'Salvat ✓';
+
+        setTimeout(() => {
+          if (saveBtn.classList.contains('is-ok')) {
+            saveBtn.classList.remove('is-ok');
+            saveBtn.textContent = 'Salvează';
+          }
+          if (!countdownTimer) saveBtn.disabled = true;
+          else saveBtn.disabled = false;
+        }, 1200);
+
+        startCountdown(nowMs);
+
+      } catch (e) {
+        setStatus('❌ ' + e.message, 'bad');
+        saveBtn.classList.remove('is-loading','is-ok');
+        saveBtn.textContent = 'Salvează';
+        if (countdownTimer) saveBtn.disabled = false;
+      } finally {
+        saving = false;
+      }
+    }
+
+    (async () => {
+      await loadTeams();
+      const valid = await validatePayload();
+      validPayload = !!valid;
+      const team = resolveTeam();
+      saveBtn.disabled = !valid || !team;
+      if (valid) { bindDocWatcher(); bindLiveRef(); }
+      saveBtn.onclick = () => valid && saveScan(valid);
+    })();
+  </script>
+</body>
+</html>

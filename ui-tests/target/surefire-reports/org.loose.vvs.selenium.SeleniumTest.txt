@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: org.loose.vvs.selenium.SeleniumTest
+-------------------------------------------------------------------------------
+Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 18.93 s -- in org.loose.vvs.selenium.SeleniumTest

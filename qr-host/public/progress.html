@@ -1,0 +1,92 @@
+<link rel="icon" type="image/png" href="./robo-Photoroom.png?v=3">
+<link rel="apple-touch-icon" href="./robo-Photoroom.png?v=3">
+
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Progress</title>
+  <style>
+    :root { color-scheme: dark; }
+    body{
+      background:#0b1220;color:#e8eefc;margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    }
+    .wrap{max-width:720px;margin:24px auto;padding:16px}
+    .card{background:#121a2b;border-radius:12px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .cp{flex:0 0 80px;background:#0e1527;border-radius:8px;padding:8px;text-align:center}
+    .hit{outline:2px solid #4ade80}
+    small{opacity:.85}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h2>Team <span id="team"></span> &mdash; <span id="round"></span></h2>
+      <h3>Progress: <span id="prog">0/0</span> • Score: <span id="score">0.00/10</span></h3>
+      <div id="grid" class="row"></div>
+      <pre id="err" style="color:#ffb4b4"></pre>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
+  <script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCIMWYFfDtmQ0VcC9d9cb4eo4UikxZY0dI",
+    authDomain: "spaceengineeringchallenge.firebaseapp.com",
+    projectId: "spaceengineeringchallenge",
+    storageBucket: "spaceengineeringchallenge.appspot.com",
+    messagingSenderId: "45731512584",
+    appId: "1:45731512584:web:0801466b1972c457122cbd"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  const u = new URL(location.href);
+  const teamId = u.searchParams.get('teamId') || 'team-1';
+  const roundId = u.searchParams.get('roundId') || 'round 1';
+  document.getElementById('team').textContent = teamId;
+  document.getElementById('round').textContent = roundId;
+
+  const grid = document.getElementById('grid');
+  const prog = document.getElementById('prog');
+  const score = document.getElementById('score');
+  const err = document.getElementById('err');
+
+  async function load() {
+    try{
+      // checkpoints pt runda
+      const cpsSnap = await db.collection('checkpoints')
+        .where('roundId','==', roundId).where('isActive','==', true)
+        .orderBy('order').get();
+      const cps = cpsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // scans pt echipă + rundă
+      const scSnap = await db.collection('scans')
+        .where('teamId','==', teamId).where('roundId','==', roundId).get();
+      const scans = new Map(scSnap.docs.map(d => {
+        const v = d.data(); return [v.cpId, v];
+      }));
+
+      grid.innerHTML = '';
+      let hit = 0;
+      for(const c of cps){
+        const s = scans.get(c.id);
+        const box = document.createElement('div');
+        box.className = 'cp' + (s ? ' hit' : '');
+        box.innerHTML = `<div><b>P${c.order}</b></div>` +
+          (s ? `<small>🌡 ${s.temp}&deg;C<br/>💧 ${s.humidity}%</small>` : `<small>&mdash;</small>`);
+        grid.appendChild(box);
+        if(s) hit++;
+      }
+      prog.textContent = `${hit}/${cps.length}`;
+      score.textContent = `${(10*hit/Math.max(1,cps.length)).toFixed(2)}/10`;
+    }catch(e){ err.textContent = e.message; }
+  }
+  load();
+  </script>
+</body>
+</html>

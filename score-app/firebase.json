@@ -1,0 +1,32 @@
+{
+  "projects": {
+    "default": "spaceengineeringchallenge"
+  },
+  "hosting": [
+    {
+      "target": "app",
+      "public": "score-app/build",
+      "ignore": [
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "qr",
+      "public": "qr-host/public",
+      "ignore": [
+        "**/.*",
+        "**/node_modules/**"
+      ]
+    }
+  ],
+  "firestore": {
+    "indexes": "firestore.indexes.json"
+  }
+}

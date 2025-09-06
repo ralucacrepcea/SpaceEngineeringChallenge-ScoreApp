@@ -1,0 +1,19 @@
+@keyframes App-logo-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+
+/* Chrome, Safari, Edge, Opera */
+input[type="number"].no-spinner::-webkit-outer-spin-button,
+input[type="number"].no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;         /* proprietatea standard */
+  margin: 0;
+}
+
+/* Firefox */
+input[type="number"].no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;    /* proprietatea standard */
+}

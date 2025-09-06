@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "default": "spaceengineeringchallenge"
+  },
+  "targets": {
+    "spaceengineeringchallenge": {
+      "hosting": {
+        "qr": [
+          "spaceengineeringchallenge-qr"
+        ],
+        "app": [
+          "spaceengineeringchallenge"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

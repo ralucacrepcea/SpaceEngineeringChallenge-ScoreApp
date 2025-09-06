@@ -1,0 +1,24 @@
+# OS + logs
+.DS_Store
+**/*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Node modules oriunde
+**/node_modules/
+
+# Build-uri (nu urcăm bundle-ul React)
+score-app/build/
+
+# Firebase local state (nu se comite)
+.firebase/
+qr-host/.firebase/
+
+# Env / chei locale
+*.env
+**/.env*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

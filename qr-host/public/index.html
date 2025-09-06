@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>QR Wall</title>
+  <style>
+    :root { color-scheme: dark; }
+    body{
+      background:#0b1220; color:#e5e7eb; margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    }
+    .wrap{ max-width:1100px; margin:24px auto; padding:16px; }
+    h1{ font-size:26px; margin:0 0 10px; color:#bfdbfe }
+    .bar{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:8px 0 16px; }
+    select{ background:#111827; color:#fff; border:1px solid #374151; padding:8px 10px; border-radius:8px; }
+    .muted{ color:#94a3b8; font-size:13px }
+    .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px; }
+    .card{
+      background:#0f172a; border:1px solid #334155; border-radius:12px; padding:12px;
+      box-shadow:0 8px 24px rgba(0,0,0,.25);
+    }
+    .title{ font-weight:700; color:#93c5fd; text-align:center; margin-bottom:6px }
+    .btns{ display:flex; gap:8px; justify-content:center; margin-top:8px; flex-wrap:wrap }
+    .btn{ background:#1d2a44; border:1px solid #2a3a60; color:#e5e7eb; border-radius:8px; padding:8px 10px; cursor:pointer; text-decoration:none }
+    .warn{ color:#fbbf24 }
+    .err{ color:#fca5a5; white-space:pre-wrap }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1> QR Wall</h1>
+
+    <div class="bar">
+      <label for="roundSel">Rundă:</label>
+      <select id="roundSel"></select>
+      <span id="info" class="muted"></span>
+    </div>
+
+    <div id="grid" class="grid"></div>
+
+    <div id="err" class="err" style="margin-top:10px"></div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
+  <!-- Config automată de pe Hosting -->
+  <script src="/__/firebase/init.js?useEmulator=false"></script>
+
+  <script>
+    (async () => {
+      const errEl  = document.getElementById('err');
+      const infoEl = document.getElementById('info');
+      const roundSel = document.getElementById('roundSel');
+      const grid = document.getElementById('grid');
+    
+      const setErr = (m) => (errEl.textContent = m || '');
+    
+      const displayUrl = (roundId, order) =>
+        `${location.origin}/display.html?roundId=${encodeURIComponent(roundId)}&order=${order}&v=6`;
+    
+      try {
+        if (!firebase.apps.length) throw new Error('Firebase init.js nu a încărcat aplicația.');
+        const db = firebase.firestore();
+        await firebase.auth().signInAnonymously().catch(() => {});
+    
+        // rounds: luăm și totalCheckpoints (sau fallback pe checkpoints)
+        async function loadRounds() {
+          const rs = await db.collection('rounds').get().catch(() => ({ empty: true, docs: [] }));
+          if (!rs.empty) {
+            return rs.docs.map(d => {
+              const r = d.data() || {};
+              const total = Number(r.totalCheckpoints ?? r.checkpoints?.totalCheckpoints ?? 0) || 0;
+              return { id: d.id, total };
+            });
+          }
+          // fallback dacă nu există colecția "rounds"
+          const cps = await db.collection('checkpoints').get();
+          const byRound = {};
+          cps.docs.forEach(d => {
+            const c = d.data() || {};
+            if (!c.roundId) return;
+            const ord = Number(c.order) || 0;
+            if (!byRound[c.roundId]) byRound[c.roundId] = new Set();
+            if (ord > 0) byRound[c.roundId].add(ord);
+          });
+          return Object.keys(byRound).map(id => ({ id, total: byRound[id].size }));
+        }
+    
+        async function loadCheckpoints(roundId) {
+          const q = await db.collection('checkpoints')
+            .where('roundId', '==', roundId)
+            .where('isActive', '==', true)
+            .orderBy('order')
+            .get();
+          return q.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
+        }
+    
+        // Normalizează pe 'order': păstrează 1 doc / order, marchează dublurile
+        function indexByOrder(cps) {
+          const byOrder = new Map();
+          const duplicates = [];
+          cps.forEach(c => {
+            const order = Number(c.order) || 0;
+            if (order <= 0) return;
+            if (!byOrder.has(order)) {
+              byOrder.set(order, c);
+            } else {
+              duplicates.push(c);
+            }
+          });
+          return { byOrder, duplicates };
+        }
+    
+        async function createMissingCp(roundId, order) {
+          try {
+            const id = `${roundId}_P${order}`; // id determinist => unicitate pe (round, order)
+            await db.collection('checkpoints').doc(id).set(
+              { roundId, order, isActive: true },
+              { merge: true }
+            );
+          } catch (e) {
+            setErr('Create CP failed: ' + (e.message || String(e)));
+          }
+        }
+    
+        async function disableDuplicateCp(dup) {
+          try {
+            await db.collection('checkpoints').doc(dup.id).set({ isActive: false }, { merge: true });
+          } catch (e) {
+            setErr('Disable dup failed: ' + (e.message || String(e)));
+          }
+        }
+    
+        function paintGrid(round, byOrder, duplicates) {
+          grid.innerHTML = '';
+          const total = Number(round.total) || Math.max(0, byOrder.size);
+          infoEl.textContent = `Runda „${round.id}” — ${total} checkpoint-uri`;
+    
+          for (let order = 1; order <= total; order++) {
+            const cp = byOrder.get(order) || null;
+    
+            const card = document.createElement('div');
+            card.className = 'card';
+    
+            const title = document.createElement('div');
+            title.className = 'title';
+            title.textContent = `Checkpoint #${order}`;
+    
+            const small = document.createElement('div');
+            small.className = 'muted';
+            small.style.textAlign = 'center';
+            small.textContent = cp ? `ID: ${cp.id}` : '— lipsește documentul în Firestore';
+    
+            const btns = document.createElement('div');
+            btns.className = 'btns';
+    
+            const open = document.createElement('a');
+            open.className = 'btn'; open.target = '_blank'; open.rel = 'noopener';
+            open.href = displayUrl(round.id, order);
+            open.textContent = 'Deschide QR';
+            btns.appendChild(open);
+    
+    
+            if (!cp) {
+              const mk = document.createElement('button');
+              mk.className = 'btn';
+              mk.textContent = 'Creează CP';
+              mk.onclick = async () => { await createMissingCp(round.id, order); await paintSelected(); };
+              btns.appendChild(mk);
+            }
+    
+            card.appendChild(title);
+            card.appendChild(small);
+            card.appendChild(btns);
+            grid.appendChild(card);
+          }
+    
+          
+    
+          if (!total) {
+            const card = document.createElement('div'); card.className = 'card';
+            card.innerHTML =
+              `<div class="title warn">Niciun checkpoint configurat</div>
+               <div class="muted">Setează <code>totalCheckpoints</code> pe doc-ul din <code>rounds/${round.id}</code>
+               sau creează documente în <code>checkpoints</code> cu <code>roundId="${round.id}"</code>.</div>`;
+            grid.appendChild(card);
+          }
+        }
+    
+        let rounds = [];
+        async function paintSelected() {
+          setErr('');
+          const rid = roundSel.value;
+          const round = rounds.find(r => r.id === rid) || { id: rid, total: 0 };
+          const cps = await loadCheckpoints(rid);
+          const { byOrder, duplicates } = indexByOrder(cps);
+          paintGrid(round, byOrder, duplicates);
+        }
+    
+        async function boot() {
+          setErr('');
+          rounds = await loadRounds();
+          if (!rounds.length) { setErr('Nu sunt runde.'); return; }
+    
+          roundSel.innerHTML = '';
+          rounds.forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = r.id; opt.textContent = r.total ? `${r.id} (${r.total})` : r.id;
+            roundSel.appendChild(opt);
+          });
+    
+          await paintSelected();
+          roundSel.addEventListener('change', paintSelected);
+        }
+    
+        boot().catch(e => setErr(e.message || String(e)));
+      } catch (e) {
+        setErr(e.message || String(e));
+      }
+    })();
+    </script>
+    
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Checkpoint Display</title>
+  <style>
+    :root { color-scheme: dark; }
+    body{
+      background:#0b1220; color:#e8eefc; margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    }
+    .wrap{max-width:720px;margin:28px auto;padding:16px}
+    .card{background:#121a2b;border:1px solid #2a3348;border-radius:12px;padding:18px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+    h2{margin:0 0 8px}
+    .muted{opacity:.8}
+    canvas{width:100%;height:auto;max-width:360px;margin:8px auto 0;display:block}
+    .row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+    .btn{background:#1d2a44;border:1px solid #2a3a60;border-radius:8px;padding:8px 12px;cursor:pointer;color:#e8eefc;transition:all .15s}
+    .btn[disabled]{opacity:.6;cursor:not-allowed}
+    .btn.ok{background:#0f5132;border-color:#198754;box-shadow:0 0 0 2px rgba(16,185,129,.2) inset}
+    .ok{color:#86efac}
+    .bad{color:#fca5a5}
+    pre{background:#0e1527;border:1px solid #24304a;border-radius:10px;padding:12px;white-space:pre-wrap;overflow:auto}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h2>Round <span id="rd">—</span> — Checkpoint #<span id="cp">—</span></h2>
+      <div class="muted">QR se regenerează la fiecare minut (slot nou, valabil ~120s)</div>
+      <canvas id="qr" aria-label="QR JSON"></canvas>
+
+      <div id="status" class="muted" style="margin-top:8px" aria-live="polite">Se inițializează…</div>
+
+      <div class="row">
+        <button id="copyPayload" class="btn" disabled>Copy JSON</button>
+        <button id="copyCurl" class="btn" disabled>Copy test cURL</button>
+      </div>
+
+      <pre id="dbg" style="margin-top:10px"></pre>
+    </div>
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
+  <!-- Config automată de pe Hosting -->
+  <script src="/__/firebase/init.js?useEmulator=false"></script>
+
+  <!-- Librărie QR -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+
+  <script>
+    (async () => {
+      const S = (txt, cls) => {
+        const el = document.getElementById('status');
+        el.textContent = txt;
+        el.className = 'muted' + (cls ? ' ' + cls : '');
+        console.log(txt);
+      };
+      const D = document.getElementById('dbg');
+      const copyPayloadBtn = document.getElementById('copyPayload');
+      const copyCurlBtn = document.getElementById('copyCurl');
+
+      // feedback mic pe buton la copiere
+      async function copyWithFlash(btn, text, okMsg='Copiat ✓'){
+        const old = btn.textContent;
+        try{
+          await navigator.clipboard.writeText(text);
+          btn.textContent = okMsg;
+          btn.classList.add('ok');
+          S('Copiat în clipboard.', 'ok');
+        }catch(e){
+          btn.textContent = 'Eroare la copiere';
+          S('Nu am putut copia: ' + (e?.message||e), 'bad');
+        }finally{
+          btn.disabled = true;
+          setTimeout(() => {
+            btn.textContent = old;
+            btn.classList.remove('ok');
+            btn.disabled = false;
+          }, 1200);
+        }
+      }
+
+      try {
+        //parametri din URL 
+        const u = new URL(location.href);
+        const roundId = u.searchParams.get('roundId');
+        const order   = Number(u.searchParams.get('order')||'1');
+        document.getElementById('rd').textContent = String(roundId||'—');
+        document.getElementById('cp').textContent = String(order);
+
+        if (!roundId || !Number.isFinite(order)) {
+          S('Lipsesc parametrii ?roundId=&order=', 'bad'); return;
+        }
+
+        // Firebase init + auth anonim 
+        if (!firebase.apps.length) { S('Firebase init.js nu a încărcat aplicația.', 'bad'); return; }
+        const app  = firebase.app();
+        const db   = firebase.firestore();
+        const auth = firebase.auth();
+        await auth.signInAnonymously();
+
+       
+        async function findCheckpoint() {
+          const q = await db.collection('checkpoints')
+            .where('roundId','==', roundId)
+            .where('order','==', order)
+            .where('isActive','==', true)
+            .limit(1).get();
+          return q.empty ? null : { id: q.docs[0].id, ...q.docs[0].data() };
+        }
+        function randSlot(){
+          const a = new Uint8Array(16);
+          crypto.getRandomValues(a);
+          return btoa(String.fromCharCode(...a)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+        }
+
+        const cp = await findCheckpoint();
+        if (!cp) { S('Nu găsesc checkpoint (roundId/order/isActive).', 'bad'); return; }
+
+        async function renderOnce() {
+          try{
+            const minute = Math.floor(Date.now()/60000);
+            const nowMs  = Date.now();
+            const slot   = randSlot();
+
+            // 1) creează slot efemer (valid ~120s) DIRECT în Firestore
+            await db.collection('ingestSlots').doc(slot).set({
+              roundId, cpId: cp.id, m: minute,
+              createdAtMs: nowMs, expiresAtMs: nowMs + 120000
+            });
+
+            // 2) QR = JSON pt robot
+            const cfg = app.options; // include apiKey & projectId
+            const payload = {
+              v: 1,
+              projectId: cfg.projectId,
+              apiKey:    cfg.apiKey,
+              slot, roundId, cpId: cp.id, m: minute
+            };
+
+            await QRCode.toCanvas(document.getElementById('qr'), JSON.stringify(payload), {
+              width: 360, errorCorrectionLevel: 'M'
+            });
+
+            // 3) Debug + butoane copy
+            const commitUrl = `https://firestore.googleapis.com/v1/projects/${payload.projectId}/databases/(default)/documents:commit`;
+            const docId = '<TEAM_ID>_' + payload.roundId + '_' + payload.cpId;
+
+            const curlStep1 =
+              `curl -s -X POST 'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${payload.apiKey}' \
+                -H 'Content-Type: application/json' \
+                -d '{"returnSecureToken":true}'`;
+
+            const body = {
+              writes: [{
+                update: {
+                  name: `projects/${payload.projectId}/databases/(default)/documents/scans/${docId}`,
+                  fields: {
+                    teamId:   { stringValue: "<TEAM_ID>" },
+                    robotId:  { stringValue: "<ROBOT_ID>" },
+                    roundId:  { stringValue: payload.roundId },
+                    cpId:     { stringValue: payload.cpId },
+                    qrMinute: { integerValue: String(payload.m) },
+                    slot:     { stringValue: payload.slot },
+                    temp:     { doubleValue: 23.4 },
+                    humidity: { doubleValue: 52.0 }
+                  }
+                }
+              }]
+            };
+
+            const curlStep2 =
+              `ID_TOKEN=$( ${curlStep1} | python3 -c "import sys, json; print(json.load(sys.stdin)['idToken'])" ) && \
+              curl -s -X POST '${commitUrl}' \
+                -H "Authorization: Bearer $ID_TOKEN" \
+                -H 'Content-Type: application/json' \
+                -d '${JSON.stringify(body)}'`;
+
+            D.textContent =
+              'Payload JSON (scanat de robot):\n' + JSON.stringify(payload, null, 2) +
+              '\n\nTest fără robot (2 pași cURL):\n\n1) ia idToken anonim:\n' + curlStep1 +
+              '\n\n2) scrie în Firestore (documents:commit):\n' + curlStep2;
+
+            copyPayloadBtn.disabled = false;
+            copyCurlBtn.disabled = false;
+            copyPayloadBtn.onclick = () => copyWithFlash(copyPayloadBtn, JSON.stringify(payload, null, 2));
+            copyCurlBtn.onclick = () => copyWithFlash(copyCurlBtn, curlStep1 + '\n\n' + curlStep2);
+
+            S('QR generat. Slot valid ~120s. Robotul poate trimite t/h acum.', 'ok');
+          } catch (e) {
+            console.error(e);
+            S('Eroare: ' + (e && e.message ? e.message : String(e)), 'bad');
+            D.textContent = (e && e.stack) ? e.stack : String(e);
+          }
+        }
+
+        // prima randare + reînnoire la fiecare minut
+        await renderOnce();
+        const msToNext = (60 - (Math.floor(Date.now()/1000)%60))*1000 + 50;
+        setTimeout(() => { renderOnce(); setInterval(renderOnce, 60000); }, msToNext);
+
+      } catch (e) {
+        console.error(e);
+        const SEl = document.getElementById('status');
+        SEl.textContent = 'Eroare: ' + (e && e.message ? e.message : String(e));
+        SEl.className = 'muted bad';
+        document.getElementById('dbg').textContent = (e && e.stack) ? e.stack : String(e);
+      }
+    })();
+  </script>
+</body>
+</html>
