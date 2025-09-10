@@ -1,0 +1,57 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName Arial
+autonumber
+
+
+actor "Team Device" as TEAM
+participant "QR Phone" as QR
+participant "Ingest API" as API
+database "DB" as DB
+
+== Start ==
+TEAM -> API : POST /runs/start { teamId, roundId } [auth]
+API -> DB : create Run(serverTs, status=OPEN)
+DB --> API : runId
+API --> TEAM : 201 Created { runId, status: OPEN }
+
+== Scan checkpoint ==
+TEAM -> QR : scan C#i
+QR --> TEAM : payload (checkpointId, editionId, roundId, nonce, exp, sig)
+
+' send the full signed payload blob, not just the signature
+TEAM -> API : POST /events/scan { runId, qrBlob, dedupKey } [auth]
+
+' server parses and validates the blob
+API -> API : parse qrBlob -> { checkpointId, editionId, roundId, nonce, exp, sig }
+API -> API : verify HMAC(sig) & exp\nvalidate scope (edition/round & checkpoint)
+
+alt valid & in-scope
+  API -> DB : append Event(type=CP, serverTs)\n(idempotent on dedupKey/tsBucket)
+  DB --> API : ack
+  API --> TEAM : 200 OK (created or duplicate)
+else invalid signature / expired
+  API --> TEAM : 401/403 error
+else scope mismatch (edition/round/checkpoint)
+  API --> TEAM : 409 Conflict
+end
+
+== Finish ==
+TEAM -> API : POST /runs/finish { runId } [auth]
+API -> API : validate run status & time window
+alt OPEN & within window
+  API -> DB : append Event(type=FINISH, serverTs)
+  API -> DB : mark Run status=FINISHED
+  DB --> API : ack
+  API --> TEAM : 200 OK
+else already FINISHED
+  API --> TEAM : 409 Conflict
+else outside round window
+  API --> TEAM : 422 Unprocessable Entity
+end
+
+opt Offline / intermittent network
+  TEAM -> TEAM : buffer scan locally
+  TEAM -> API : retry POST /events/scan on reconnect
+end
+@enduml

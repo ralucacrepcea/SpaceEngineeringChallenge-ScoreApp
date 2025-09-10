@@ -441,7 +441,7 @@ export default function TeamDashboard() {
             {/* Mission Performance */}
             <SectionHeader
               title="Mission Performance"
-              subtitle="Checkpoints are informational only. MP grade comes solely from professor-scored fields."
+              subtitle="Checkpoints are informational only. MP grade comes solely from organizer-scored fields."
             />
             <div className="px-6 py-6">
               {roundsUi.length === 0 ? (
@@ -561,7 +561,7 @@ export default function TeamDashboard() {
 
                       <div className="mt-3 flex justify-end">
                         <div className="rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-1.5 text-sm">
-                          <span className="text-slate-400 mr-2">Total score for this trek</span>
+                          <span className="text-slate-400 mr-2">Total score for this track</span>
                           <span className="font-semibold text-slate-100">
                             {(() => {
                               const v = roundProfScore(roundId);

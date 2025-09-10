@@ -617,7 +617,7 @@ export default function ManageProbesPage() {
         <div className="flex flex-col sm:flex-row gap-2 justify-end">
           <input
             type="text"
-            placeholder="New probe name"
+            placeholder="New topic name"
             value={newProbe}
             onChange={(e) => setNewProbe(e.target.value)}
             className="bg-slate-900 px-3 py-2 rounded-md border border-slate-700 focus:border-slate-500 outline-none text-sm w-full sm:w-72"
@@ -802,7 +802,7 @@ export default function ManageProbesPage() {
 
           {/* Summary */}
           <div className={`mt-4 text-sm ${sumAllWeights === 100 ? "text-emerald-400" : "text-rose-400"}`}>
-            Dinamice: <b>{dynamicSum}%</b> + Mission Performance: <b>{missionWeight}%</b> ={" "}
+            Topics: <b>{dynamicSum}%</b> + Mission Performance: <b>{missionWeight}%</b> ={" "}
             <b>{sumAllWeights}%</b> — trebuie să fie <b>100%</b>.
           </div>
         </section>

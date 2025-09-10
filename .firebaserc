@@ -5,9 +5,14 @@
   "targets": {
     "spaceengineeringchallenge": {
       "hosting": {
-        "score": ["spaceengineeringchallenge"],
-        "qr": ["spaceengineeringchallenge-qr"]
+        "app": [
+          "spaceengineeringchallenge"
+        ],
+        "qr": [
+          "spaceengineeringchallenge-qr"
+        ]
       }
     }
-  }
+  },
+  "etags": {}
 }

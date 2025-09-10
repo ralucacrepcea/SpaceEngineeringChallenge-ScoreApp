@@ -1,0 +1,136 @@
+@startuml data_model
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+
+
+' ========= Entities =========
+class User {
+  +id: string
+  +email: string
+  +role: ADMIN|ORG|TEAM
+  +createdAt: timestamp
+}
+
+class Team {
+  +id: string
+  +name: string
+  +section: A|B
+  +members: string[]
+}
+
+class Edition {
+  +id: string
+  +name: string
+  +year: int
+  +activeGtVersion?: int
+}
+
+class Round {
+  +id: string
+  +editionId: string
+  +windowStart: timestamp
+  +windowEnd: timestamp
+}
+
+class Checkpoint {
+  +id: string
+  +label: string
+  +editionId: string
+}
+
+class QRPayload {
+  +checkpointId: string
+  +editionId: string
+  +roundId: string
+  +nonce: string
+  +sig: string
+}
+
+class Run {
+  +id: string
+  +teamId: string
+  +editionId: string
+  +roundId: string
+  +status: string
+}
+
+class Event {
+  +runId: string
+  +type: START|CP|FINISH
+  +checkpointId?: string
+  +serverTs: timestamp
+  +dedupKey: string
+}
+
+class Telemetry {
+  +runId: string
+  +serverTs: timestamp
+  +temperature: float
+  +humidity: float
+  +source: string
+}
+
+class GroundTruth {
+  +editionId: string
+  +version: int
+  +series: (ts,temp,hum)[]
+}
+
+class Metrics {
+  +runId: string
+  +maeTemp: float
+  +rmseTemp: float
+  +maeHum: float
+  +rmseHum: float
+  +biasTemp: float
+  +biasHum: float
+}
+
+class Grade {
+  +runId: string
+  +G_time: float
+  +G_acc: float
+  +comment?: string
+  +enteredBy: string
+  +enteredAt: timestamp
+}
+
+class AuditLog {
+  +actorId: string
+  +action: string
+  +target: string
+  +ts: timestamp
+  +details: json
+}
+
+' ========= Relationships =========
+Edition "1" -- "many" Round
+Edition "1" -- "many" Checkpoint
+Edition "1" -- "1..*" GroundTruth
+
+Run "1" -- "many" Event
+Run "1" -- "many" Telemetry
+Run "1" -- "0..1" Metrics
+Run "1" -- "0..1" Grade
+
+Run "many" -- "1" Team
+Run "many" -- "1" Edition
+
+QRPayload ..> Checkpoint : signed payload (no FK)
+
+' ========= Notes / Constraints =========
+note right of Event
+  Uniqueness (idempotency):
+  (runId, type, checkpointId?, tsBucket | dedupKey)
+end note
+
+note bottom of Telemetry
+  Index: (runId, serverTs)
+end note
+
+note right of QRPayload
+  HMAC-validated at ingest; phones can be swapped
+  without changing payload identity.
+end note
+@enduml

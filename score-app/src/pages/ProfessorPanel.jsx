@@ -1397,7 +1397,7 @@ export default function ProfessorPanel() {
                     onClick={() => { exportFullCsv(); setExportOpen(false); }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-slate-800"
                   >
-                    Detailed (legacy) CSV
+                    Detailed CSV
                   </button>
                   <div className="h-px bg-slate-800" />
                   <button
@@ -2445,10 +2445,19 @@ function BenchTab({ rounds, teams, roundMetrics, buildSpeedTop, buildTempTop, bu
   const tempStats = buildTempTop(rounds, roundMetrics, teams);
   const humStats = buildHumTop(rounds, roundMetrics, teams);
 
-  const fmtTime = (ms) =>
+  // Data + ora, locale, 24h
+  const fmtDateTime = (ms) =>
     !Number.isFinite(ms) || ms == null
       ? "—"
-      : new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      : new Date(ms).toLocaleString([], {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour12: false,
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
 
   return (
     <div className="space-y-6">
@@ -2520,10 +2529,11 @@ function BenchTab({ rounds, teams, roundMetrics, buildSpeedTop, buildTempTop, bu
         </div>
       </div>
 
-      {/* NEW: Completion order per round (with times) */}
+      {/* Round completion order & times — acum cu Start at + Finished at (data+ora) */}
       <div className="rounded-lg border border-slate-800 bg-slate-900/40 overflow-hidden">
         <div className="px-3 py-2 text-sm font-semibold border-b border-slate-800">
-          Round completion order & times <span className="text-slate-400 text-xs">(time = last QR scan)</span>
+          Round completion order & times{" "}
+          <span className="text-slate-400 text-xs">(Start = first QR scan, Finished = last QR scan)</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -2531,6 +2541,7 @@ function BenchTab({ rounds, teams, roundMetrics, buildSpeedTop, buildTempTop, bu
               <tr>
                 <th className="px-3 py-2 text-left">Round</th>
                 <th className="px-3 py-2 text-left">Team</th>
+                <th className="px-3 py-2 text-left">Start at</th>
                 <th className="px-3 py-2 text-left">Finished at</th>
               </tr>
             </thead>
@@ -2538,8 +2549,16 @@ function BenchTab({ rounds, teams, roundMetrics, buildSpeedTop, buildTempTop, bu
               {rounds.map((rid) => {
                 const M = roundMetrics[rid];
                 if (!M) return null;
+
+                // Construim lista echipelor care AU TERMINAT, cu start/finish
                 const finished = teams
-                  .map((t) => ({ t, ft: M.byTeam?.[t.id]?.finishTimeMs ?? null }))
+                  .map((t) => {
+                    const per = M.byTeam?.[t.id];
+                    const ft = per?.finishTimeMs ?? null;
+                    const times = (per?.timesMs || []).filter((x) => Number.isFinite(x));
+                    const st = times.length ? Math.min(...times) : null; // primul QR din rundă
+                    return { t, st, ft };
+                  })
                   .filter((x) => x.ft != null)
                   .sort((a, b) => a.ft - b.ft);
 
@@ -2547,7 +2566,7 @@ function BenchTab({ rounds, teams, roundMetrics, buildSpeedTop, buildTempTop, bu
                   return (
                     <tr key={`cmp:none:${rid}`}>
                       <td className="px-3 py-2">{rid}</td>
-                      <td className="px-3 py-2 text-slate-400" colSpan={2}>
+                      <td className="px-3 py-2 text-slate-400" colSpan={3}>
                         — no team finished yet —
                       </td>
                     </tr>
@@ -2558,7 +2577,8 @@ function BenchTab({ rounds, teams, roundMetrics, buildSpeedTop, buildTempTop, bu
                   <tr key={`cmp:${rid}:${row.t.id}`}>
                     <td className="px-3 py-2">{idx === 0 ? rid : ""}</td>
                     <td className="px-3 py-2">{row.t.name || row.t.id}</td>
-                    <td className="px-3 py-2">{fmtTime(row.ft)}</td>
+                    <td className="px-3 py-2">{fmtDateTime(row.st)}</td>
+                    <td className="px-3 py-2">{fmtDateTime(row.ft)}</td>
                   </tr>
                 ));
               })}
@@ -2569,6 +2589,7 @@ function BenchTab({ rounds, teams, roundMetrics, buildSpeedTop, buildTempTop, bu
     </div>
   );
 }
+
 
 /*  Heatmap modal  */
 function HeatmapModal({ teams, manualProbes, liveScore, onClose }) {

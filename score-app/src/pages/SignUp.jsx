@@ -49,7 +49,7 @@ export default function Signup() {
       if (members.some((m) => !m.firstName.trim() || !m.lastName.trim()))
         return toast.error("Please fill out all member names.");
     }
-    if (role === "professor" && (!firstName.trim() || !lastName.trim()))
+    if (role === "organizer" && (!firstName.trim() || !lastName.trim()))
       return toast.error("Please enter your first and last name.");
 
     try {
@@ -136,7 +136,7 @@ export default function Signup() {
         <select className="w-full mb-4 px-4 py-2 bg-slate-700 border border-slate-600 rounded-md"
           value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="team">Team</option>
-          <option value="professor">Professor</option>
+          <option value="organizer">Organizer</option>
         </select>
 
         {role === "team" ? (

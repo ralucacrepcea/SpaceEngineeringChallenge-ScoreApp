@@ -1,0 +1,28 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName Arial
+autonumber
+
+
+actor "Team Device" as TEAM
+participant "Ingest API" as API
+database "DB" as DB
+participant "Projection/Metrics" as MET
+
+TEAM -> API : POST /telemetry/batch\n{ runId, samples:[{temp, hum, clientTs}...] } [auth]
+API -> API : validate schema/units\nstamp serverTs per sample\nidempotent on (runId, clientTsBucket)
+
+alt valid payload & run OPEN
+  API -> DB : append samples (serverTs)\nindex (runId, serverTs)
+  API --> TEAM : 202 Accepted  / 200 OK
+  DB -> MET : change event (stream/trigger)
+  MET -> DB : read run + groundTruth
+  MET -> DB : compute & write MAE/RMSE/bias\nupdate materialized plots
+else invalid payload / run CLOSED
+  API --> TEAM : 400/422 (payload) or 409 (run state)
+end
+
+opt Offline / intermittent network
+  TEAM -> TEAM : buffer batch locally\nretry on reconnect
+end
+@enduml

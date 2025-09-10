@@ -1,0 +1,55 @@
+@startuml Logical_Architecture
+!theme plain
+skinparam rectangle {
+  RoundCorner 8
+  Shadowing false
+}
+skinparam ArrowColor #555
+skinparam ArrowThickness 1.0
+skinparam DefaultTextAlignment center
+
+rectangle "QR Display\nPhones" as QR #LightBlue
+rectangle "Team Scanning\nDevice" as TEAM #LightBlue
+rectangle "Organizer\nTablet/Laptop" as ORG #LightBlue
+rectangle "Admin\nConsole" as ADMIN #LightBlue
+
+rectangle "Ingest & REST APIs\n(HTTPS, server time)" as API #DDDDDD
+rectangle "Auth & RBAC" as AUTH #DDDDDD
+database  "Database" as DB #CFE8CF
+rectangle "Evidence Projection\n& Metrics (MAE/RMSE)" as PROJ #DDDDDD
+rectangle "Notifications\n(runs, grades)" as NOTI #DDDDDD
+
+' layout
+QR -[hidden]-> TEAM
+TEAM -[hidden]-> ORG
+ORG -[hidden]-> ADMIN
+
+API -[hidden]down- AUTH
+AUTH -[hidden]down- DB
+API -[hidden]right- PROJ
+PROJ -[hidden]right- NOTI
+
+' flows
+TEAM --> API : scan QR\n(signed payload)
+QR --> TEAM : display QR
+TEAM ..> API : telemetry batch
+ORG ..> PROJ : timelines / plots
+ADMIN ..> AUTH : config & approvals
+
+API --> AUTH
+AUTH --> DB
+API --> DB
+DB --> PROJ
+PROJ --> NOTI
+
+ORG ..> API : enter grades
+API --> DB
+NOTI ..> TEAM
+NOTI ..> ORG
+
+legend left
+Client devices = blue
+Backend services = gray
+Data store = green
+endlegend
+@enduml

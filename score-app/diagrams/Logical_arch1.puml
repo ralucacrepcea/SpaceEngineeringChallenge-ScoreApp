@@ -1,0 +1,44 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName Arial
+autonumber
+
+
+actor "Organizer UI" as ORG
+participant "REST API" as API
+database "DB" as DB
+participant "Notifications" as NOTI
+
+== Enter grade ==
+ORG -> API : POST /grades { runId, G_time, G_acc, comment? } [auth]
+API -> API : validate role=ORG\ncheck run exists & state\nvalidate ranges
+alt authorized & valid
+  API -> DB : upsert Grade(runId, G_time, G_acc, comment?)\nappend AuditLog("grade.entered")
+  DB --> API : write OK
+  API --> ORG : 200 OK { gradeId, updatedAt }
+else unauthorized
+  API --> ORG : 403 Forbidden
+else invalid payload / run not found
+  API --> ORG : 422 / 404 error
+end
+
+== Publish ==
+ORG -> API : POST /grades/publish { runId } [auth]
+API -> API : ensure grade exists & not already published
+alt grade present & not published
+  API -> DB : set Grade.publishedAt, publishedBy\nappend AuditLog("grade.published")
+  DB --> API : write OK
+  API -> NOTI : notify team(runId, grades)
+  NOTI --> API : queued | delivered
+  API --> ORG : 200 OK { publishedAt, publishedBy, notify: queued|delivered }
+else grade not found
+  API --> ORG : 404 Not Found
+else already published
+  API --> ORG : 409 Conflict
+end
+
+note right of DB
+  Audit logs are append-only
+  and linked to grade actions.
+end note
+@enduml

@@ -1,0 +1,26 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName Arial
+left to right direction
+
+
+node "Clients" as Clients #LightBlue {
+  rectangle "Browsers / Team Scanners /\nQR Phones" as B
+}
+
+node "Managed Cloud" as Cloud #fff5e6 {
+  rectangle "Auth & RBAC" as Auth
+  rectangle "Ingest & REST APIs\n(Cloud Functions/App)" as App
+  database "Realtime DB / Firestore" as DB
+  rectangle "Subscriptions & Projections" as Proj
+  rectangle "Notifications" as Noti
+  rectangle "Object Storage\n(plots/exports)" as Obj
+}
+
+Clients --> Cloud : HTTPS + tokens
+App --> Auth
+App --> DB
+DB --> Proj
+Proj --> Noti
+App --> Obj
+@enduml

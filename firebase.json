@@ -1,20 +1,13 @@
 {
+  "functions": { "source": "functions" },
   "hosting": [
     {
-      "target": "score",
+      "target": "app",
       "public": "score-app/build",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "rewrites": [{ "source": "**", "destination": "/index.html" }],
-      "headers": [
-        { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
-        { "source": "/static/**", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] }
-      ]
-    },
-    {
-      "target": "qr",
-      "public": "qr-host/public",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "ignore": ["**/.*", "**/node_modules/**"],
       "rewrites": [{ "source": "**", "destination": "/index.html" }]
-    }
-  ]
+    },
+    { "target": "qr", "public": "qr-host/public", "ignore": ["**/.*", "**/node_modules/**"] }
+  ],
+  "firestore": { "indexes": "firestore.indexes.json" }
 }
